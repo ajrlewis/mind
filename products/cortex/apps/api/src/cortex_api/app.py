@@ -83,7 +83,9 @@ def _create_brain_client(settings: Settings) -> BrainClient | None:
 
 def _create_chat_model(settings: Settings) -> tuple[ChatModel, AsyncCloseable | None]:
     if settings.model_backend == "deterministic":
-        return DeterministicChatModel(), None
+        return DeterministicChatModel(
+            stream_delay_seconds=settings.deterministic_stream_delay_seconds
+        ), None
     assert settings.openai_api_key is not None
     assert settings.openai_model is not None
     model = create_openai_chat_model(

@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os
 from collections.abc import AsyncIterator, Sequence
 
@@ -71,6 +72,17 @@ def test_clean_cortex_migration_is_separate_and_constrained(cortex_database_url:
             cursor.execute(
                 "INSERT INTO conversations (id, owner_id) VALUES (gen_random_uuid(), '')"
             )
+
+
+@pytest.mark.integration
+def test_cortex_migration_preserves_existing_loggers(cortex_database_url: str) -> None:
+    logger = logging.getLogger("cortex.stream")
+    logger.disabled = False
+    config = Config("products/cortex/alembic.ini")
+
+    command.upgrade(config, "head")
+
+    assert logger.disabled is False
 
 
 @pytest.mark.integration
