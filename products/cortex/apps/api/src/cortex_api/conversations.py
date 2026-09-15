@@ -1,7 +1,7 @@
 import uuid
 from collections.abc import AsyncIterator
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, StringConstraints
 
@@ -73,7 +73,7 @@ class AppendTurnResponse(BaseModel):
 
 class ConversationTextDelta(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
-    text: str
+    text: Annotated[str, StringConstraints(min_length=1)]
 
 
 class ConversationStreamCompleted(BaseModel):
@@ -81,6 +81,20 @@ class ConversationStreamCompleted(BaseModel):
     conversation: ConversationResponse
     model: str
     usage: TokenUsage | None = None
+
+
+class ConversationStreamError(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    error: Literal[
+        "conversation_not_found",
+        "conversation_conflict",
+        "conversation_history_full",
+        "model_timeout",
+        "model_unavailable",
+        "invalid_model_response",
+        "model_rejected_request",
+        "conversation_error",
+    ]
 
 
 class ConversationService:
@@ -174,6 +188,8 @@ class ConversationService:
             if completed is not None:
                 raise InvalidModelOutput
             if isinstance(event, AssistantTextDelta):
+                if not event.text:
+                    raise InvalidModelOutput
                 character_count += len(event.text)
                 if character_count > MAX_ASSISTANT_RESPONSE_CHARACTERS:
                     raise InvalidModelOutput
@@ -184,7 +200,12 @@ class ConversationService:
             else:
                 raise InvalidModelOutput
         assistant_content = "".join(text_parts)
-        if completed is None or not assistant_content.strip():
+        if (
+            completed is None
+            or completed.message.role != "assistant"
+            or completed.message.content != assistant_content
+            or not assistant_content.strip()
+        ):
             raise InvalidModelOutput
 
         async with async_session_scope(self._session_factory) as session:
@@ -222,6 +243,7 @@ __all__ = [
     "ConversationResponse",
     "ConversationService",
     "ConversationStreamCompleted",
+    "ConversationStreamError",
     "ConversationTextDelta",
     "StaleConversationError",
 ]

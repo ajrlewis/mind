@@ -52,9 +52,17 @@ reconnection. Ordered `delta` events contain only `{"text":"..."}`. One terminal
 event contains the canonical conversation, model identity, and optional usage; a terminal `error`
 contains one safe error code. Assistant output is capped at 32,000 characters. The service holds
 no database transaction while streaming and publishes the complete user/assistant pair only after
-a valid provider terminal event. Disconnect, cancellation, invalid output, provider failure, or a
-stale commit publishes neither message. The web proxy validates every frame, forwards aborts, and
-shows partial content only in a dashed, explicitly unsaved transient region.
+a valid provider terminal event whose assistant content exactly matches the accumulated non-empty
+deltas. Missing, duplicate, non-assistant, mismatched, post-terminal, and oversized output is
+rejected. Disconnect, cancellation, invalid output, provider failure, or a stale commit publishes
+neither message. The web proxy requires an SSE response, validates every frame, forwards aborts,
+and shows partial content only in a dashed, explicitly unsaved transient region.
+
+The hand-maintained SSE envelope is exactly `event: <delta|completed|error>`, followed by one
+`data: <JSON>` line and a blank line. Immutable FastAPI schemas own all three JSON payloads because
+OpenAPI does not describe event streams directly. Structured stream logs contain only the start or
+safe terminal category, duration, and emitted character count; they exclude content, deltas,
+provider data, credentials, and identity.
 
 ## Implemented model boundary
 

@@ -35,7 +35,7 @@ from cortex_ai.models import (
 
 
 class OpenAIChatModel:
-    """Non-streaming OpenAI Responses API adapter."""
+    """Bounded OpenAI Responses API adapter for complete and streamed turns."""
 
     def __init__(self, *, client: AsyncOpenAI, model: str, owns_client: bool = False) -> None:
         self._client = client
@@ -110,7 +110,11 @@ class OpenAIChatModel:
                     if "".join(emitted) != validated.message.content:
                         raise InvalidModelOutput
                     terminal = True
-                    yield ModelStreamCompleted(model=validated.model, usage=validated.usage)
+                    yield ModelStreamCompleted(
+                        message=validated.message,
+                        model=validated.model,
+                        usage=validated.usage,
+                    )
                 elif event_type in {"response.failed", "response.incomplete", "error"}:
                     raise InvalidModelOutput
             if not terminal:

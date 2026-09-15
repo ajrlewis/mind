@@ -44,4 +44,6 @@ class DeterministicChatModel:
         for text in (response.message.content[:midpoint], response.message.content[midpoint:]):
             if text:
                 yield AssistantTextDelta(text=text)
-        yield ModelStreamCompleted(model=response.model, usage=response.usage)
+        yield ModelStreamCompleted(
+            message=response.message, model=response.model, usage=response.usage
+        )

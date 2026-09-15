@@ -1,3 +1,4 @@
+from collections.abc import AsyncIterator, Sequence
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import ClassVar, cast
@@ -5,7 +6,14 @@ from uuid import uuid4
 
 import pytest
 
-from cortex_ai import DeterministicChatModel
+from cortex_ai import (
+    MAX_ASSISTANT_RESPONSE_CHARACTERS,
+    AssistantTextDelta,
+    ChatMessage,
+    DeterministicChatModel,
+    InvalidModelOutput,
+    ModelStreamCompleted,
+)
 from cortex_api import conversations
 from cortex_api.conversations import (
     ConversationHistoryFull,
@@ -116,4 +124,65 @@ async def test_cancelled_stream_does_not_publish_partial_turn(service: Conversat
     stream = service.stream_turn("owner-a", FakeRepository.conversation.id, "cancel me")
     await anext(stream)
     await stream.aclose()
+    assert FakeRepository.messages == []
+
+
+@pytest.mark.parametrize(
+    "events",
+    [
+        [AssistantTextDelta(text="partial")],
+        [
+            AssistantTextDelta(text="partial"),
+            ModelStreamCompleted(
+                message=ChatMessage(role="assistant", content="different"), model="synthetic"
+            ),
+        ],
+        [
+            AssistantTextDelta(text="partial"),
+            ModelStreamCompleted(
+                message=ChatMessage(role="user", content="partial"), model="synthetic"
+            ),
+        ],
+        [
+            AssistantTextDelta(text="partial"),
+            ModelStreamCompleted(
+                message=ChatMessage(role="assistant", content="partial"), model="synthetic"
+            ),
+            AssistantTextDelta(text="after terminal"),
+        ],
+    ],
+)
+async def test_stream_rejects_malformed_terminal_contract_without_publication(
+    service: ConversationService, events: list[object]
+) -> None:
+    class MalformedModel:
+        async def stream(self, _: Sequence[ChatMessage]) -> AsyncIterator[object]:
+            for event in events:
+                yield event
+
+    service._model = MalformedModel()  # type: ignore[assignment]
+    with pytest.raises(InvalidModelOutput):
+        _ = [
+            event
+            async for event in service.stream_turn(
+                "owner-a", FakeRepository.conversation.id, "malformed"
+            )
+        ]
+    assert FakeRepository.messages == []
+
+
+async def test_stream_rejects_empty_delta_without_publication(
+    service: ConversationService,
+) -> None:
+    class InvalidDeltaModel:
+        async def stream(self, _: Sequence[ChatMessage]) -> AsyncIterator[AssistantTextDelta]:
+            yield AssistantTextDelta.model_construct(text="")
+            yield AssistantTextDelta(text="x" * (MAX_ASSISTANT_RESPONSE_CHARACTERS + 1))
+
+    service._model = InvalidDeltaModel()  # type: ignore[assignment]
+    with pytest.raises(InvalidModelOutput):
+        _ = [
+            event
+            async for event in service.stream_turn("owner-a", FakeRepository.conversation.id, "bad")
+        ]
     assert FakeRepository.messages == []

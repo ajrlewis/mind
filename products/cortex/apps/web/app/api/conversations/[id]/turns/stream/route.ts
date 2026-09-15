@@ -19,7 +19,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   let backend: Response;
   try { backend = await fetch(`${config.CORTEX_API_URL}/conversations/${encodeURIComponent(id)}/turns/stream`, { method: "POST", cache: "no-store", signal: controller.signal, headers: { Authorization: `Bearer ${config.CORTEX_API_BEARER_TOKEN}`, "Content-Type": "application/json", Accept: "text/event-stream" }, body: JSON.stringify(parsedRequest.data) }); }
   catch { clearTimeout(timeout); return new Response(safeError, { headers: streamHeaders }); }
-  if (!backend.ok || !backend.body) { clearTimeout(timeout); return new Response(safeError, { headers: streamHeaders }); }
+  if (!backend.ok || !backend.body || !backend.headers.get("content-type")?.toLowerCase().startsWith("text/event-stream")) { clearTimeout(timeout); controller.abort(); return new Response(safeError, { headers: streamHeaders }); }
   const stream = new ReadableStream<Uint8Array>({
     async start(output) {
       const reader = backend.body!.getReader(); const decoder = new TextDecoder(); const encoder = new TextEncoder(); let buffer = ""; let terminal = false;

@@ -1,4 +1,5 @@
-from collections.abc import Callable, Sequence
+import logging
+from collections.abc import AsyncIterator, Callable, Sequence
 from typing import cast
 
 import httpx
@@ -16,7 +17,7 @@ from cortex_ai import (
     TokenUsage,
 )
 from cortex_api import create_app
-from cortex_api.conversations import ConversationService
+from cortex_api.conversations import ConversationService, ConversationTextDelta
 from cortex_api.settings import Settings
 from cortex_brain import BrainClient
 
@@ -254,6 +255,46 @@ def test_streaming_turn_requires_authentication() -> None:
     )
     assert response.status_code == 401
     assert response.json() == {"error": "unauthorized"}
+
+
+def test_streaming_turn_frames_safe_terminal_error_and_bounded_logs(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    class FailingStreamService:
+        async def stream_turn(
+            self, owner_id: str, conversation_id: object, content: str
+        ) -> AsyncIterator[ConversationTextDelta]:
+            del owner_id, conversation_id, content
+            yield ConversationTextDelta(text="synthetic delta")
+            raise RuntimeError("provider-secret hidden reasoning submitted-content")
+
+    caplog.set_level(logging.INFO, logger="cortex.stream")
+    response = TestClient(
+        create_app(conversation_service=cast(ConversationService, FailingStreamService()))
+    ).post(
+        "/conversations/10000000-0000-4000-8000-000000000001/turns/stream",
+        headers={"Authorization": "Bearer cortex-local-dev"},
+        json={"content": "submitted-content"},
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+    assert response.headers["cache-control"] == "no-cache, no-store"
+    assert response.headers["x-accel-buffering"] == "no"
+    assert response.text == (
+        'event: delta\ndata: {"text":"synthetic delta"}\n\n'
+        'event: error\ndata: {"error":"conversation_error"}\n\n'
+    )
+    records = [record for record in caplog.records if record.name == "cortex.stream"]
+    assert [vars(record)["stream_event"] for record in records] == [
+        "start",
+        "conversation_error",
+    ]
+    assert vars(records[-1])["emitted_characters"] == len("synthetic delta")
+    assert vars(records[-1])["duration_ms"] >= 0
+    rendered_logs = caplog.text
+    for secret in ("provider-secret", "reasoning", "submitted-content", "cortex-local-dev"):
+        assert secret not in rendered_logs
 
 
 @pytest.mark.parametrize(

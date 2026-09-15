@@ -32,6 +32,11 @@ model result is atomically published with a 32,000-character assistant cap. Cort
 runtime, production identity implementation, or additional production model provider yet. No
 cross-product package has been extracted.
 
+Streaming validates non-empty deltas and exactly one assistant terminal whose complete content
+matches the accumulated deltas before publication. Its structured operational logs are bounded to
+start/safe outcome, duration, and emitted character count. Compose service DNS uses explicit
+`brain-*` and `cortex-*` ownership names without fixed container names.
+
 The Cortex web application uses a separate signed HTTP-only local session and server-only Cortex
 API bearer. Server Components and actions call only the public conversation HTTP contract through
 generated OpenAPI Zod validation. The browser can create, list, reopen, and append non-streaming
