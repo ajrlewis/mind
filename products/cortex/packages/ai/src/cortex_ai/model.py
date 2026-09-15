@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import AsyncIterator, Sequence
 from typing import Protocol
 
@@ -23,6 +24,9 @@ class DeterministicChatModel:
 
     identity = "cortex-deterministic-v1"
 
+    def __init__(self, *, stream_delay_seconds: float = 0) -> None:
+        self._stream_delay_seconds = stream_delay_seconds
+
     async def invoke(self, messages: Sequence[ChatMessage]) -> ModelResponse:
         last_message = messages[-1]
         prefix = "Synthetic response to: "
@@ -41,9 +45,13 @@ class DeterministicChatModel:
     ) -> AsyncIterator[AssistantTextDelta | ModelStreamCompleted]:
         response = await self.invoke(messages)
         midpoint = max(1, len(response.message.content) // 2)
-        for text in (response.message.content[:midpoint], response.message.content[midpoint:]):
+        for index, text in enumerate(
+            (response.message.content[:midpoint], response.message.content[midpoint:])
+        ):
             if text:
                 yield AssistantTextDelta(text=text)
+                if index == 0 and self._stream_delay_seconds:
+                    await asyncio.sleep(self._stream_delay_seconds)
         yield ModelStreamCompleted(
             message=response.message, model=response.model, usage=response.usage
         )

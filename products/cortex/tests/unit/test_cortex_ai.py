@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import Sequence
 from typing import cast
 
@@ -31,6 +32,21 @@ async def test_deterministic_stream_emits_ordered_deltas_and_terminal_metadata()
     assert len(events) == 3
     assert "".join(event.text for event in events[:-1]) == "Synthetic response to: hello stream"
     assert events[-1].model == "cortex-deterministic-v1"
+
+
+async def test_deterministic_stream_delay_is_cancellable_after_first_delta() -> None:
+    stream = DeterministicChatModel(stream_delay_seconds=5).stream(
+        [ChatMessage(role="user", content="cancel stream")]
+    )
+
+    assert (await anext(stream)).text
+    pending = asyncio.create_task(anext(stream))
+    await asyncio.sleep(0)
+    pending.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await pending
+    await stream.aclose()
 
 
 class RecordingModel:

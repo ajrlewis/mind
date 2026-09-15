@@ -28,6 +28,7 @@ class Settings(BaseSettings):
         str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255)
     ] = "cortex-local-user"
     model_backend: Literal["deterministic", "openai"] = "deterministic"
+    deterministic_stream_delay_seconds: float = Field(default=0, ge=0, le=5)
     openai_api_key: SecretStr | None = None
     openai_model: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)] | None = (
         None

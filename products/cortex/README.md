@@ -86,7 +86,12 @@ an explicitly synthetic response with deterministic word-count usage. It is a de
 test implementation, not an intelligent or production model. `GET /health` remains independent of
 both Brain and model calls.
 
-The production adapter uses the official OpenAI Python SDK's async, non-streaming Responses API.
+`DETERMINISTIC_STREAM_DELAY_SECONDS` defaults to zero. Local Compose sets it to 0.25 seconds so
+browser tests can deterministically observe and cancel after the first of two synthetic deltas;
+`CORTEX_DETERMINISTIC_STREAM_DELAY_SECONDS` can override that Compose-only test seam.
+
+The production adapter uses the official OpenAI Python SDK's async streaming and non-streaming
+Responses API.
 Select it with `MODEL_BACKEND=openai` and set both `OPENAI_API_KEY` and `OPENAI_MODEL` to nonblank
 values. `OPENAI_TIMEOUT_SECONDS` defaults to 30 seconds and accepts 0.1–120 seconds. Optional
 `OPENAI_BASE_URL`, `OPENAI_ORGANIZATION`, and `OPENAI_PROJECT` settings support explicit endpoint
