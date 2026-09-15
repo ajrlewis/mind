@@ -1,7 +1,7 @@
 name: mind
 
 services:
-  postgres:
+  brain-postgres:
     image: pgvector/pgvector:pg17
     environment:
       POSTGRES_DB: brain
@@ -18,13 +18,13 @@ services:
       timeout: 5s
       retries: 15
 
-  api:
+  brain-api:
     build:
       context: .
       dockerfile: products/brain/Dockerfile
       target: api
     environment:
-      DATABASE_URL: postgresql+psycopg://brain:brain@postgres:5432/brain
+      DATABASE_URL: postgresql+psycopg://brain:brain@brain-postgres:5432/brain
       DATABASE_POOL_SIZE: ${DATABASE_POOL_SIZE:-10}
       DATABASE_MAX_OVERFLOW: ${DATABASE_MAX_OVERFLOW:-5}
       DATABASE_POOL_TIMEOUT_SECONDS: ${DATABASE_POOL_TIMEOUT_SECONDS:-10}
@@ -38,7 +38,7 @@ services:
     ports:
       - "${API_PORT:-8000}:8000"
     depends_on:
-      migrate:
+      brain-migrate:
         condition: service_completed_successfully
     healthcheck:
       test:
@@ -52,13 +52,13 @@ services:
       timeout: 5s
       retries: 15
 
-  web:
+  brain-web:
     build:
       context: .
       dockerfile: products/brain/Dockerfile
       target: web
     environment:
-      BRAIN_API_URL: http://api:8000
+      BRAIN_API_URL: http://brain-api:8000
       LOCAL_BEARER_TOKEN: ${LOCAL_BEARER_TOKEN:-brain-local-dev}
       LOCAL_WEB_USER: ${LOCAL_WEB_USER:-brain-admin}
       LOCAL_WEB_PASSWORD: ${LOCAL_WEB_PASSWORD:-brain-local-dev}
@@ -66,7 +66,7 @@ services:
     ports:
       - "${WEB_PORT:-3000}:3000"
     depends_on:
-      api:
+      brain-api:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://localhost:3000/sign-in').then(r=>{if(!r.ok)process.exit(1)})"]
@@ -74,16 +74,16 @@ services:
       timeout: 5s
       retries: 15
 
-  migrate:
+  brain-migrate:
     build:
       context: .
       dockerfile: products/brain/Dockerfile
       target: api
     command: ["alembic", "-c", "products/brain/alembic.ini", "upgrade", "head"]
     environment:
-      DATABASE_URL: postgresql+psycopg://brain:brain@postgres:5432/brain
+      DATABASE_URL: postgresql+psycopg://brain:brain@brain-postgres:5432/brain
     depends_on:
-      postgres:
+      brain-postgres:
         condition: service_healthy
     restart: "no"
 
@@ -93,12 +93,12 @@ services:
       dockerfile: products/cortex/Dockerfile
       target: api
     environment:
-      BRAIN_URL: http://api:8000
+      BRAIN_URL: http://brain-api:8000
       BRAIN_API_KEY: ${LOCAL_BEARER_TOKEN:-brain-local-dev}
       BRAIN_CONNECT_TIMEOUT_SECONDS: ${BRAIN_CONNECT_TIMEOUT_SECONDS:-2}
       BRAIN_READ_TIMEOUT_SECONDS: ${BRAIN_READ_TIMEOUT_SECONDS:-5}
       MODEL_BACKEND: deterministic
-      CORTEX_DATABASE_URL: postgresql+psycopg://brain:brain@postgres:5432/cortex
+      CORTEX_DATABASE_URL: postgresql+psycopg://brain:brain@brain-postgres:5432/cortex
       CORTEX_LOCAL_BEARER_TOKEN: ${CORTEX_LOCAL_BEARER_TOKEN:-cortex-local-dev}
       CORTEX_LOCAL_OWNER_ID: ${CORTEX_LOCAL_OWNER_ID:-cortex-local-user}
     ports:
@@ -125,7 +125,7 @@ services:
       target: api
     command: ["alembic", "-c", "products/cortex/alembic.ini", "upgrade", "head"]
     environment:
-      CORTEX_DATABASE_URL: postgresql+psycopg://brain:brain@postgres:5432/cortex
+      CORTEX_DATABASE_URL: postgresql+psycopg://brain:brain@brain-postgres:5432/cortex
     depends_on:
       cortex-db-init:
         condition: service_completed_successfully
@@ -139,10 +139,10 @@ services:
       [
         "sh",
         "-c",
-        "psql -h postgres -U brain -d brain -tAc \"SELECT 1 FROM pg_database WHERE datname='cortex'\" | grep -q 1 || createdb -h postgres -U brain -O brain cortex",
+        "psql -h brain-postgres -U brain -d brain -tAc \"SELECT 1 FROM pg_database WHERE datname='cortex'\" | grep -q 1 || createdb -h brain-postgres -U brain -O brain cortex",
       ]
     depends_on:
-      postgres:
+      brain-postgres:
         condition: service_healthy
     restart: "no"
 

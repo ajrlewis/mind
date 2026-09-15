@@ -1,6 +1,6 @@
 import asyncio
 import os
-from collections.abc import Sequence
+from collections.abc import AsyncIterator, Sequence
 
 import psycopg
 import pytest
@@ -8,7 +8,14 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy import select
 
-from cortex_ai import ChatMessage, ModelResponse
+from cortex_ai import (
+    MAX_ASSISTANT_RESPONSE_CHARACTERS,
+    AssistantTextDelta,
+    ChatMessage,
+    InvalidModelOutput,
+    ModelResponse,
+    ModelStreamCompleted,
+)
 from cortex_api.conversations import ConversationNotFound, ConversationService
 from cortex_api.settings import Settings
 from cortex_state import (
@@ -140,3 +147,77 @@ async def test_model_failure_and_stale_writer_publish_nothing(cortex_database_ur
         conversation = await session.scalar(select(Conversation))
         assert conversation is not None and conversation.version == 2
     await engine.dispose()
+
+
+@pytest.mark.integration
+async def test_stream_cancellation_after_delta_keeps_postgres_unchanged(
+    cortex_database_url: str,
+) -> None:
+    settings = integration_settings(cortex_database_url)
+    engine = create_async_engine(settings)
+    factory = create_async_session_factory(engine)
+    release = asyncio.Event()
+
+    class SlowModel:
+        async def stream(
+            self, _: Sequence[ChatMessage]
+        ) -> AsyncIterator[AssistantTextDelta | ModelStreamCompleted]:
+            yield AssistantTextDelta(text="partial")
+            await release.wait()
+            yield ModelStreamCompleted(
+                message=ChatMessage(role="assistant", content="partial complete"),
+                model="slow-synthetic",
+            )
+
+    service = ConversationService(factory, SlowModel())
+    try:
+        created = await service.create("stream-owner")
+        stream = service.stream_turn("stream-owner", created.id, "cancel this")
+        assert (await anext(stream)).text == "partial"
+        assert engine.pool.checkedout() == 0
+        await stream.aclose()
+        assert (await service.get("stream-owner", created.id)).messages == []
+        assert engine.pool.checkedout() == 0
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("failure", ["provider", "malformed", "overflow"])
+async def test_failed_streams_publish_no_partial_turn(
+    cortex_database_url: str, failure: str
+) -> None:
+    settings = integration_settings(cortex_database_url)
+    engine = create_async_engine(settings)
+    factory = create_async_session_factory(engine)
+
+    class FailingStreamModel:
+        async def stream(
+            self, _: Sequence[ChatMessage]
+        ) -> AsyncIterator[AssistantTextDelta | ModelStreamCompleted]:
+            yield AssistantTextDelta(text="partial")
+            if failure == "provider":
+                raise RuntimeError("synthetic provider body")
+            if failure == "overflow":
+                yield AssistantTextDelta(text="x" * MAX_ASSISTANT_RESPONSE_CHARACTERS)
+                return
+            yield ModelStreamCompleted(
+                message=ChatMessage(role="assistant", content="mismatch"),
+                model="synthetic",
+            )
+
+    service = ConversationService(factory, FailingStreamModel())
+    try:
+        created = await service.create(f"{failure}-owner")
+        expected = RuntimeError if failure == "provider" else InvalidModelOutput
+        with pytest.raises(expected):
+            _ = [
+                event
+                async for event in service.stream_turn(
+                    f"{failure}-owner", created.id, "must stay atomic"
+                )
+            ]
+        assert (await service.get(f"{failure}-owner", created.id)).messages == []
+        assert engine.pool.checkedout() == 0
+    finally:
+        await engine.dispose()

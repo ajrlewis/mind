@@ -183,7 +183,7 @@ integration expects a running, migrated, Northstar-seeded Compose stack. Prepare
 
 ```bash
 docker compose up -d --build
-docker compose exec -T api brain-seed-northstar
+docker compose exec -T brain-api brain-seed-northstar
 npx playwright install chromium
 npm run test:e2e --workspace @brain/web
 ```
@@ -215,11 +215,11 @@ docker compose down
 Canonical local database lifecycle:
 
 ```bash
-docker compose up -d postgres
-docker compose exec -T postgres pg_isready -U brain -d brain
-docker compose up migrate
-docker compose up -d api
-docker compose exec -T postgres psql -U brain -d brain -c \
+docker compose up -d brain-postgres
+docker compose exec -T brain-postgres pg_isready -U brain -d brain
+docker compose up brain-migrate
+docker compose up -d brain-api
+docker compose exec -T brain-postgres psql -U brain -d brain -c \
   "SELECT extversion FROM pg_extension WHERE extname = 'vector';"
 docker compose down
 ```
@@ -242,7 +242,7 @@ If host port 5432 is already occupied, select another port consistently for Comp
 the test connection:
 
 ```bash
-POSTGRES_PORT=55432 docker compose up -d postgres
+POSTGRES_PORT=55432 docker compose up -d brain-postgres
 TEST_DATABASE_URL=postgresql://brain:brain@localhost:55432/brain \
   UV_CACHE_DIR="$PWD/.uv-cache" uv run pytest -m integration
 POSTGRES_PORT=55432 docker compose down

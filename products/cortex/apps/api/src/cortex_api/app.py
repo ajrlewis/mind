@@ -1,3 +1,6 @@
+import asyncio
+import logging
+import time
 import uuid
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -30,6 +33,7 @@ from cortex_api.conversations import (
     ConversationResponse,
     ConversationService,
     ConversationStreamCompleted,
+    ConversationStreamError,
     ConversationTextDelta,
     StaleConversationError,
 )
@@ -43,6 +47,13 @@ from cortex_brain import (
     BrainUnexpectedResponse,
 )
 from cortex_state import create_async_engine, create_async_session_factory
+
+logger = logging.getLogger("cortex.stream")
+
+
+def _sse(event: str, payload: BaseModel) -> str:
+    """Serialize the documented two-line SSE envelope around authoritative schemas."""
+    return f"event: {event}\ndata: {payload.model_dump_json()}\n\n"
 
 
 class AsyncCloseable(Protocol):
@@ -251,6 +262,10 @@ def create_app(
         identity: Annotated[CallerIdentity, Depends(caller)],
     ) -> StreamingResponse:
         async def events() -> AsyncGenerator[str]:
+            started = time.monotonic()
+            emitted_characters = 0
+            outcome = "cancelled"
+            logger.info("cortex_stream_start", extra={"stream_event": "start"})
             try:
                 async for event in resolved_conversation_service.stream_turn(
                     identity.owner_id, conversation_id, request_body.content
@@ -258,25 +273,34 @@ def create_app(
                     if await request.is_disconnected():
                         return
                     if isinstance(event, ConversationTextDelta):
-                        yield f"event: delta\ndata: {event.model_dump_json()}\n\n"
+                        emitted_characters += len(event.text)
+                        yield _sse("delta", event)
                     elif isinstance(event, ConversationStreamCompleted):
-                        yield f"event: completed\ndata: {event.model_dump_json()}\n\n"
-            except ConversationNotFound:
-                yield 'event: error\ndata: {"error":"conversation_not_found"}\n\n'
-            except StaleConversationError:
-                yield 'event: error\ndata: {"error":"conversation_conflict"}\n\n'
-            except ConversationHistoryFull:
-                yield 'event: error\ndata: {"error":"conversation_history_full"}\n\n'
-            except ModelTimeout:
-                yield 'event: error\ndata: {"error":"model_timeout"}\n\n'
-            except ModelUnavailable:
-                yield 'event: error\ndata: {"error":"model_unavailable"}\n\n'
-            except InvalidModelOutput:
-                yield 'event: error\ndata: {"error":"invalid_model_response"}\n\n'
-            except ModelRejectedRequest:
-                yield 'event: error\ndata: {"error":"model_rejected_request"}\n\n'
-            except Exception:
-                yield 'event: error\ndata: {"error":"conversation_error"}\n\n'
+                        outcome = "completed"
+                        yield _sse("completed", event)
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:
+                code = {
+                    ConversationNotFound: "conversation_not_found",
+                    StaleConversationError: "conversation_conflict",
+                    ConversationHistoryFull: "conversation_history_full",
+                    ModelTimeout: "model_timeout",
+                    ModelUnavailable: "model_unavailable",
+                    InvalidModelOutput: "invalid_model_response",
+                    ModelRejectedRequest: "model_rejected_request",
+                }.get(type(error), "conversation_error")
+                outcome = code
+                yield _sse("error", ConversationStreamError.model_validate({"error": code}))
+            finally:
+                logger.info(
+                    "cortex_stream_end",
+                    extra={
+                        "stream_event": outcome,
+                        "duration_ms": max(0, round((time.monotonic() - started) * 1000)),
+                        "emitted_characters": emitted_characters,
+                    },
+                )
 
         return StreamingResponse(
             events(),

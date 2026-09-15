@@ -44,6 +44,7 @@ class AssistantTextDelta(BaseModel):
 
 class ModelStreamCompleted(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
+    message: ChatMessage
     model: ModelIdentity
     usage: TokenUsage | None = None
 

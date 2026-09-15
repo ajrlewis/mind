@@ -1442,9 +1442,9 @@ A developer can install the workspace and run each lifecycle step explicitly:
 
 ```bash
 UV_CACHE_DIR="$PWD/.uv-cache" uv sync --frozen --all-packages
-docker compose up -d postgres
-docker compose up migrate
-docker compose up -d api
+docker compose up -d brain-postgres
+docker compose up brain-migrate
+docker compose up -d brain-api
 ```
 
 Or build and start the complete dependency chain in one command:
