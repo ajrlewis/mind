@@ -44,3 +44,25 @@ test("stopping after a received delta publishes no partial turn", async ({ page 
   await expect(page.getByText(message, { exact: true })).not.toBeVisible();
   await expect(page.getByText(answer, { exact: true })).not.toBeVisible();
 });
+
+test("Northstar lookup shows read-only evidence outside conversation history", async ({ page }) => {
+  await page.goto("/");
+  await page.getByLabel("Username").fill(process.env.CORTEX_WEB_TEST_USER ?? "cortex-user");
+  await page.getByLabel("Password").fill(process.env.CORTEX_WEB_TEST_PASSWORD ?? "cortex-local-dev");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.getByRole("link", { name: "Knowledge lookup" }).click();
+  await page.getByLabel("Search knowledge").fill("Revenue is £45m");
+  await page.getByRole("button", { name: "Search", exact: true }).click();
+  const evidence = page.getByRole("article", { name: "Knowledge evidence" });
+  await expect(evidence.getByRole("heading", { name: "Project Orion" })).toBeVisible();
+  await expect(evidence.getByText("Project Orion operating update")).toBeVisible();
+  await expect(evidence).toContainText("£45m");
+  await expect(page.getByLabel("Messages")).toHaveCount(0);
+  const cookies = await page.context().cookies();
+  expect(cookies.find((cookie) => cookie.name === "cortex-session")).toMatchObject({ httpOnly: true, sameSite: "Lax" });
+  expect(cookies.some((cookie) => cookie.value.includes("cortex-local-dev") || cookie.value.includes("brain-local-dev"))).toBe(false);
+  expect(await page.content()).not.toContain("cortex-local-dev");
+  expect(await page.content()).not.toContain("brain-local-dev");
+  await page.reload();
+  await expect(page.getByRole("article", { name: "Knowledge evidence" })).toHaveCount(0);
+});

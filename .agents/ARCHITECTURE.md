@@ -44,9 +44,10 @@ start/safe outcome, duration, and emitted character count. Compose service DNS u
 `brain-*` and `cortex-*` ownership names without fixed container names.
 
 The Cortex web application uses a separate signed HTTP-only local session and server-only Cortex
-API bearer. Server Components and actions call only the public conversation HTTP contract through
-generated OpenAPI Zod validation. The browser can create, list, reopen, and append non-streaming
-turns without optimistic durable messages or direct backend access. Brain credentials, identity,
+API bearer. Server Components and actions call the public conversation and lookup HTTP contracts
+through generated OpenAPI Zod validation. The browser can create, list, reopen, and append turns
+without optimistic durable messages or direct backend access. A separate read-only evidence view
+shows lookup results as escaped text outside conversation history. Brain credentials, identity,
 APIs, and sessions are not used by Cortex web.
 
 ## Brain Purpose And Boundary
