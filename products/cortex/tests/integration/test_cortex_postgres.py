@@ -7,7 +7,7 @@ import psycopg
 import pytest
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import select
+from sqlalchemy import event, select, update
 
 from cortex_ai import (
     MAX_ASSISTANT_RESPONSE_CHARACTERS,
@@ -230,6 +230,156 @@ async def test_failed_streams_publish_no_partial_turn(
                 )
             ]
         assert (await service.get(f"{failure}-owner", created.id)).messages == []
+        assert engine.pool.checkedout() == 0
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.integration
+async def test_successful_stream_publishes_one_canonical_pair(cortex_database_url: str) -> None:
+    engine = create_async_engine(integration_settings(cortex_database_url))
+    factory = create_async_session_factory(engine)
+
+    class Model:
+        async def stream(
+            self, _: Sequence[ChatMessage]
+        ) -> AsyncIterator[AssistantTextDelta | ModelStreamCompleted]:
+            yield AssistantTextDelta(text="synthetic ")
+            yield AssistantTextDelta(text="answer")
+            yield ModelStreamCompleted(
+                message=ChatMessage(role="assistant", content="synthetic answer"),
+                model="synthetic",
+            )
+
+    service = ConversationService(factory, Model())
+    try:
+        created = await service.create("stream-owner")
+        events = [
+            item async for item in service.stream_turn("stream-owner", created.id, "question")
+        ]
+        assert [item.text for item in events[:2]] == ["synthetic ", "answer"]
+        assert [
+            (item.sequence, item.role, item.content) for item in events[2].conversation.messages
+        ] == [(1, "user", "question"), (2, "assistant", "synthetic answer")]
+        reopened = await service.get("stream-owner", created.id)
+        assert reopened.messages == events[2].conversation.messages
+        async with factory() as session:
+            assert len(tuple((await session.scalars(select(ConversationMessage))).all())) == 2
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.integration
+async def test_stream_wait_releases_connection_and_stale_writer_publishes_nothing(
+    cortex_database_url: str,
+) -> None:
+    engine = create_async_engine(integration_settings(cortex_database_url))
+    factory = create_async_session_factory(engine)
+    waiting = asyncio.Event()
+    release = asyncio.Event()
+
+    class PausedModel:
+        async def stream(
+            self, _: Sequence[ChatMessage]
+        ) -> AsyncIterator[AssistantTextDelta | ModelStreamCompleted]:
+            yield AssistantTextDelta(text="loser")
+            waiting.set()
+            await release.wait()
+            yield ModelStreamCompleted(
+                message=ChatMessage(role="assistant", content="loser"), model="synthetic"
+            )
+
+    service = ConversationService(factory, PausedModel())
+    try:
+        created = await service.create("stream-owner")
+        stream = service.stream_turn("stream-owner", created.id, "losing user")
+        assert (await anext(stream)).text == "loser"
+        task = asyncio.create_task(anext(stream))
+        await asyncio.wait_for(waiting.wait(), 1)
+        assert engine.pool.checkedout() == 0
+        with (
+            psycopg.connect(cortex_database_url) as connection,
+            connection.cursor() as cursor,
+        ):
+            cursor.execute(
+                "SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() "
+                "AND pid <> pg_backend_pid() AND state = 'idle in transaction'"
+            )
+            assert cursor.fetchone() == (0,)
+        await ConversationService(factory, RecordingModel()).append_turn(
+            "stream-owner", created.id, "winner"
+        )
+        release.set()
+        with pytest.raises(StaleConversationError):
+            await task
+        await stream.aclose()
+        reopened = await service.get("stream-owner", created.id)
+        assert [item.content for item in reopened.messages] == ["winner", "synthetic answer"]
+    finally:
+        release.set()
+        await engine.dispose()
+
+
+@pytest.mark.integration
+async def test_stream_history_full_and_commit_failure_publish_nothing(
+    cortex_database_url: str,
+) -> None:
+    engine = create_async_engine(integration_settings(cortex_database_url))
+    factory = create_async_session_factory(engine)
+
+    class Model:
+        calls = 0
+
+        async def stream(
+            self, _: Sequence[ChatMessage]
+        ) -> AsyncIterator[AssistantTextDelta | ModelStreamCompleted]:
+            self.calls += 1
+            yield AssistantTextDelta(text="answer")
+            yield ModelStreamCompleted(
+                message=ChatMessage(role="assistant", content="answer"), model="synthetic"
+            )
+
+    model = Model()
+    service = ConversationService(factory, model)
+    try:
+        full = await service.create("full-owner")
+        async with factory.begin() as session:
+            session.add_all(
+                ConversationMessage(
+                    conversation_id=full.id,
+                    sequence=index,
+                    role="user" if index % 2 else "assistant",
+                    content="synthetic",
+                )
+                for index in range(1, 51)
+            )
+            await session.execute(
+                update(Conversation).where(Conversation.id == full.id).values(version=50)
+            )
+        from cortex_api.conversations import ConversationHistoryFull
+
+        with pytest.raises(ConversationHistoryFull):
+            _ = [item async for item in service.stream_turn("full-owner", full.id, "new")]
+        assert model.calls == 0
+        assert len((await service.get("full-owner", full.id)).messages) == 50
+
+        failed = await service.create("failed-owner")
+
+        commits = 0
+
+        def fail_commit(_: object) -> None:
+            nonlocal commits
+            commits += 1
+            if commits == 2:
+                raise RuntimeError("synthetic commit failure")
+
+        event.listen(engine.sync_engine, "commit", fail_commit)
+        try:
+            with pytest.raises(RuntimeError, match="synthetic commit failure"):
+                _ = [item async for item in service.stream_turn("failed-owner", failed.id, "new")]
+        finally:
+            event.remove(engine.sync_engine, "commit", fail_commit)
+        assert (await service.get("failed-owner", failed.id)).messages == []
         assert engine.pool.checkedout() == 0
     finally:
         await engine.dispose()

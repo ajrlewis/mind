@@ -18,9 +18,10 @@ vi.mock("@/lib/env", () => ({
 import { POST } from "@/app/api/conversations/[id]/turns/stream/route";
 
 const context = { params: Promise.resolve({ id: "conversation/id" }) };
-const request = () =>
+const request = (signal?: AbortSignal) =>
   new Request("http://web.test/api/conversations/id/turns/stream", {
     method: "POST",
+    signal,
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ content: "synthetic content" }),
   });
@@ -72,5 +73,42 @@ describe("conversation stream proxy", () => {
     expect(text).toContain('event: error\ndata: {"error":"conversation_error"}');
     expect(text).not.toContain("server-secret");
     expect(text).not.toContain("synthetic content");
+  });
+
+  it("forwards browser abort to the backend request", async () => {
+    const browser = new AbortController();
+    let backendSignal: AbortSignal | undefined;
+    vi.stubGlobal("fetch", vi.fn().mockImplementation((_url, options: RequestInit) => {
+      backendSignal = options.signal ?? undefined;
+      return new Promise<Response>((_resolve, reject) => {
+        options.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+      });
+    }));
+
+    const response = POST(request(browser.signal), context);
+    await vi.waitFor(() => expect(backendSignal).toBeDefined());
+    browser.abort();
+    expect(backendSignal?.aborted).toBe(true);
+    expect(await (await response).text()).toBe('event: error\ndata: {"error":"conversation_error"}\n\n');
+  });
+
+  it("times out the backend request and returns a safe terminal", async () => {
+    vi.useFakeTimers();
+    try {
+      let backendSignal: AbortSignal | undefined;
+      vi.stubGlobal("fetch", vi.fn().mockImplementation((_url, options: RequestInit) => {
+        backendSignal = options.signal ?? undefined;
+        return new Promise<Response>((_resolve, reject) => {
+          options.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+        });
+      }));
+      const response = POST(request(), context);
+      await vi.waitFor(() => expect(backendSignal).toBeDefined());
+      await vi.advanceTimersByTimeAsync(35_000);
+      expect(backendSignal?.aborted).toBe(true);
+      expect(await (await response).text()).toContain('"conversation_error"');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

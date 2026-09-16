@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from collections.abc import AsyncIterator, Callable, Sequence
 from typing import cast
@@ -295,6 +296,69 @@ def test_streaming_turn_frames_safe_terminal_error_and_bounded_logs(
     rendered_logs = caplog.text
     for secret in ("provider-secret", "reasoning", "submitted-content", "cortex-local-dev"):
         assert secret not in rendered_logs
+
+
+async def test_browser_disconnect_promptly_cancels_api_model_task() -> None:
+    entered_model_wait = asyncio.Event()
+    cancelled = asyncio.Event()
+    disconnect = asyncio.Event()
+
+    class PausedStreamService:
+        async def stream_turn(
+            self, owner_id: str, conversation_id: object, content: str
+        ) -> AsyncIterator[ConversationTextDelta]:
+            del owner_id, conversation_id, content
+            yield ConversationTextDelta(text="partial")
+            entered_model_wait.set()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                cancelled.set()
+                raise
+
+    app = create_app(conversation_service=cast(ConversationService, PausedStreamService()))
+    body = b'{"content":"synthetic question"}'
+    request_sent = False
+    disconnect_task: asyncio.Task[None] | None = None
+
+    async def receive() -> dict[str, object]:
+        nonlocal request_sent
+        if not request_sent:
+            request_sent = True
+            return {"type": "http.request", "body": body, "more_body": False}
+        await disconnect.wait()
+        return {"type": "http.disconnect"}
+
+    async def send(message: dict[str, object]) -> None:
+        nonlocal disconnect_task
+        if message.get("type") == "http.response.body" and b"partial" in message.get("body", b""):
+
+            async def trigger_disconnect() -> None:
+                await entered_model_wait.wait()
+                disconnect.set()
+
+            disconnect_task = asyncio.create_task(trigger_disconnect())
+
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "http_version": "1.1",
+        "method": "POST",
+        "scheme": "http",
+        "path": "/conversations/10000000-0000-4000-8000-000000000001/turns/stream",
+        "raw_path": b"/conversations/10000000-0000-4000-8000-000000000001/turns/stream",
+        "query_string": b"",
+        "root_path": "",
+        "server": ("testserver", 80),
+        "client": ("testclient", 12345),
+        "headers": [
+            (b"content-type", b"application/json"),
+            (b"authorization", b"Bearer cortex-local-dev"),
+        ],
+    }
+    await asyncio.wait_for(app(scope, receive, send), 1)  # type: ignore[arg-type]
+    assert disconnect_task is not None and disconnect_task.done()
+    assert cancelled.is_set()
 
 
 @pytest.mark.parametrize(
