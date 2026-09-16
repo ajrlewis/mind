@@ -88,6 +88,7 @@ class OpenAIChatModel:
         )
         terminal = False
         emitted: list[str] = []
+        provider_stream = None
         try:
             provider_stream = await self._client.responses.create(
                 model=self._model, input=provider_messages, store=False, stream=True
@@ -138,6 +139,9 @@ class OpenAIChatModel:
             raise ModelUnavailable from error
         except Exception as error:
             raise ModelUnavailable from error
+        finally:
+            if provider_stream is not None:
+                await provider_stream.close()
 
     @staticmethod
     def _translate_response(response: Response) -> ModelResponse:

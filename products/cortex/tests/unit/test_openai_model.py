@@ -1,3 +1,5 @@
+import asyncio
+from types import SimpleNamespace
 from typing import Any, cast
 
 import httpx
@@ -63,11 +65,11 @@ def response(*, content: list[dict[str, Any]] | None = None, usage: object = "de
 
 
 class FakeResponses:
-    def __init__(self, result: Response | Exception) -> None:
+    def __init__(self, result: object) -> None:
         self.result = result
         self.calls: list[dict[str, object]] = []
 
-    async def create(self, **kwargs: object) -> Response:
+    async def create(self, **kwargs: object) -> Any:
         self.calls.append(kwargs)
         if isinstance(self.result, Exception):
             raise self.result
@@ -75,7 +77,7 @@ class FakeResponses:
 
 
 class FakeClient:
-    def __init__(self, result: Response | Exception) -> None:
+    def __init__(self, result: object) -> None:
         self.responses = FakeResponses(result)
         self.closed = False
 
@@ -83,7 +85,7 @@ class FakeClient:
         self.closed = True
 
 
-def model(result: Response | Exception) -> tuple[OpenAIChatModel, FakeClient]:
+def model(result: object) -> tuple[OpenAIChatModel, FakeClient]:
     client = FakeClient(result)
     return OpenAIChatModel(client=cast(AsyncOpenAI, client), model="gpt-synthetic"), client
 
@@ -263,3 +265,138 @@ async def test_malformed_outputs_are_rejected_without_details(provider_response:
         await adapter.invoke([ChatMessage(role="user", content="Question")])
 
     assert str(caught.value) == ""
+
+
+class FakeStream:
+    def __init__(self, events: list[object], failure: Exception | None = None) -> None:
+        self.events = events
+        self.failure = failure
+        self.closed = False
+        self.waiting: asyncio.Event | None = None
+
+    def __aiter__(self) -> "FakeStream":
+        return self
+
+    async def __anext__(self) -> object:
+        if self.events:
+            return self.events.pop(0)
+        if self.waiting is not None:
+            await self.waiting.wait()
+        if self.failure is not None:
+            raise self.failure
+        raise StopAsyncIteration
+
+    async def close(self) -> None:
+        self.closed = True
+
+
+def delta(text: str) -> object:
+    return SimpleNamespace(type="response.output_text.delta", delta=text)
+
+
+def completed(result: Response | None = None) -> object:
+    return SimpleNamespace(type="response.completed", response=result or response())
+
+
+async def test_stream_yields_ordered_deltas_and_matching_terminal_then_closes() -> None:
+    stream = FakeStream([delta("Synthetic "), delta("answer"), completed()])
+    adapter, client = model(stream)
+
+    events = [
+        event async for event in adapter.stream([ChatMessage(role="user", content="Question")])
+    ]
+
+    assert [event.text for event in events[:2]] == ["Synthetic ", "answer"]
+    assert events[2].message == ChatMessage(role="assistant", content="Synthetic answer")
+    assert stream.closed
+    assert client.responses.calls[0]["stream"] is True
+    assert client.responses.calls[0]["store"] is False
+
+
+@pytest.mark.parametrize(
+    "events",
+    [
+        [delta("Synthetic answer")],
+        [delta("Synthetic answer"), completed(), completed()],
+        [delta("Synthetic answer"), completed(), delta("extra")],
+        [delta("Synthetic answer"), completed(response().model_copy(update={"output": []}))],
+        [
+            delta("Synthetic answer"),
+            completed(
+                response().model_copy(
+                    update={
+                        "output": [
+                            SimpleNamespace(
+                                type="message",
+                                role="user",
+                                content=[
+                                    SimpleNamespace(type="output_text", text="Synthetic answer")
+                                ],
+                            )
+                        ]
+                    }
+                )
+            ),
+        ],
+        [delta("different"), completed()],
+        [delta("")],
+        [SimpleNamespace(type="response.failed", response="provider-secret")],
+    ],
+)
+async def test_stream_rejects_malformed_output_and_closes(events: list[object]) -> None:
+    stream = FakeStream(events)
+    adapter, _ = model(stream)
+
+    with pytest.raises(InvalidModelOutput) as caught:
+        _ = [
+            event
+            async for event in adapter.stream([ChatMessage(role="user", content="secret prompt")])
+        ]
+
+    assert str(caught.value) == ""
+    assert stream.closed
+
+
+@pytest.mark.parametrize(
+    ("failure", "expected"),
+    [
+        (APITimeoutError(httpx.Request("POST", "https://api.openai.test")), ModelTimeout),
+        (RuntimeError("provider-secret"), ModelUnavailable),
+        (
+            BadRequestError("provider-secret", response=status_response(), body="provider-secret"),
+            ModelRejectedRequest,
+        ),
+    ],
+)
+async def test_stream_maps_provider_failure_safely_and_closes(
+    failure: Exception, expected: type[Exception]
+) -> None:
+    stream = FakeStream([delta("partial")], failure)
+    adapter, _ = model(stream)
+
+    with pytest.raises(expected) as caught:
+        _ = [
+            event
+            async for event in adapter.stream([ChatMessage(role="user", content="secret prompt")])
+        ]
+
+    assert str(caught.value) == ""
+    assert stream.closed
+
+
+async def test_stream_cancellation_closes_provider_stream() -> None:
+    stream = FakeStream([delta("partial")])
+    stream.waiting = asyncio.Event()
+    adapter, _ = model(stream)
+
+    async def consume() -> None:
+        _ = [
+            event async for event in adapter.stream([ChatMessage(role="user", content="Question")])
+        ]
+
+    task = asyncio.create_task(consume())
+    await asyncio.sleep(0)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert stream.closed
