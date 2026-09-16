@@ -16,6 +16,8 @@ h1, h2 { font-family: Georgia, serif; font-weight: 400; }
 .brand { display: flex; align-items: center; gap: .65rem; font-weight: 700; }
 .brand-mark { display: grid; width: 2rem; height: 2rem; place-items: center; border-radius: 50%; background: #b9d59b; color: #10120f; font-family: Georgia, serif; }
 .new-button { width: 100%; }
+.knowledge-link { display: block; padding: .7rem; border: 1px solid #454a40; border-radius: .45rem; color: #d5d5ca; text-decoration: none; }
+.knowledge-link:hover { background: #272b24; color: #fff; }
 .sidebar nav { min-height: 0; flex: 1; overflow-y: auto; }
 .conversation-list { display: grid; gap: .25rem; margin: .65rem 0; padding: 0; list-style: none; }
 .conversation-list a { display: block; overflow: hidden; padding: .7rem; border-radius: .45rem; color: #d5d5ca; text-decoration: none; text-overflow: ellipsis; white-space: nowrap; }
@@ -51,4 +53,14 @@ h1, h2 { font-family: Georgia, serif; font-weight: 400; }
 .lede { color: #b9b9ad; line-height: 1.6; }
 .sign-in-form { display: grid; gap: 1rem; margin: 2rem 0 1rem; }
 .form-error { margin: 0; color: #ffb6a8; }
+.knowledge-view { min-height: 100vh; }
+.knowledge-content { width: min(52rem, calc(100% - 2.5rem)); margin: 2rem auto; }
+.knowledge-form { display: grid; grid-template-columns: 1fr auto; gap: .6rem; align-items: end; }
+.knowledge-form label { grid-column: 1 / -1; font-weight: 700; }
+.knowledge-form input { min-width: 0; padding: .8rem; border: 1px solid #454a40; border-radius: .65rem; background: #171a15; color: #fff; }
+.evidence { margin-top: 2rem; padding: 1.5rem; border: 1px solid #34382f; border-radius: .8rem; background: #171a15; overflow-wrap: anywhere; }
+.evidence h2 { margin-bottom: .25rem; }
+.evidence h3 { margin-top: 1.5rem; }
+.evidence-path { color: #b9b9ad; }
+.evidence-text { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; line-height: 1.6; }
 @media (max-width: 700px) { .app-shell { grid-template-columns: 1fr; } .sidebar { border-right: 0; border-bottom: 1px solid #34382f; } .sidebar nav { max-height: 12rem; } .conversation-view { min-height: auto; } .state { min-height: 65vh; } .message { max-width: 95%; } .composer-footer { align-items: stretch; flex-direction: column; } }

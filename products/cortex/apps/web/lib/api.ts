@@ -4,6 +4,7 @@ import {
   AppendTurnResponse,
   ConversationListResponse,
   ConversationResponse,
+  LookupResponse,
 } from "./generated/api";
 import { env } from "./env";
 
@@ -16,7 +17,9 @@ export type ApiErrorKind =
   | "timeout"
   | "unavailable"
   | "invalid_response"
-  | "unexpected";
+  | "unexpected"
+  | "knowledge_changed"
+  | "brain_disabled";
 
 export class ApiError extends Error {
   constructor(public kind: ApiErrorKind) {
@@ -56,6 +59,11 @@ async function request<T>(
     } catch {}
     if (response.status === 401) throw new ApiError("unauthorized");
     if (response.status === 404) throw new ApiError("not_found");
+    if (code === "knowledge_changed") throw new ApiError("knowledge_changed");
+    if (code === "brain_disabled") throw new ApiError("brain_disabled");
+    if (code === "brain_unavailable") throw new ApiError("unavailable");
+    if (code === "brain_malformed") throw new ApiError("invalid_response");
+    if (code === "brain_unauthorized" || code === "brain_error") throw new ApiError("unavailable");
     if (response.status === 409) throw new ApiError("conflict");
     if (code === "conversation_history_full") throw new ApiError("history_full");
     if (code === "model_rejected_request") throw new ApiError("rejected");
@@ -78,6 +86,7 @@ async function request<T>(
 
 export type Conversation = z.infer<typeof ConversationResponse>;
 export type ConversationSummary = z.infer<typeof ConversationListResponse>["conversations"][number];
+export type LookupEvidence = NonNullable<z.infer<typeof LookupResponse>["result"]>;
 
 export const createConversation = () =>
   request("/conversations", ConversationResponse, { method: "POST" });
@@ -93,4 +102,10 @@ export const appendTurn = (id: string, content: string) =>
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ content }),
+  });
+export const lookupKnowledge = (query: string) =>
+  request("/knowledge/lookup", LookupResponse, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ query }),
   });

@@ -7,6 +7,13 @@
 
 ## Implemented web conversation flow
 
+The authenticated workspace also has a separate read-only Knowledge lookup page. Its server
+action calls Cortex's public lookup endpoint with the server-only bearer and validates the
+generated response contract. The browser receives only the returned evidence. Title, path,
+source titles, snippet, and Page Markdown are rendered as escaped text; lookup results are not
+conversation messages and are not retained after a page reload. Empty, changed, disabled,
+unavailable, and malformed results have safe messages.
+
 The Cortex Next.js application provides a minimal local authenticated conversation workspace. A
 local user can sign in, create a conversation, watch a bounded streamed turn arrive, navigate
 away, and reopen the backend's canonical ordered history. Conversation titles are not inferred
