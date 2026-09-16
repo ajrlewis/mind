@@ -707,6 +707,14 @@ The version-one bundle has these responsibilities:
 * `update` governs immutable version creation and stale-write handling;
 * `lint` audits Skill routing and knowledge quality without mutating by default.
 
+Future repository-owned canonical Skills should cover PDF and PowerPoint extraction, SharePoint
+source retrieval and ingestion, and public web search/research. Document Skills should specify
+how to preserve useful page or slide structure and source references when producing Markdown.
+Connector-facing Skills should specify inputs, authorized tool use, provenance, and outputs;
+Cortex owns file parsing, network access, and connector execution. Add each Skill to the default
+bundle only with a reviewed `SKILL.md`, an executable Cortex capability, and tests for its
+declared contract. These are planned additions, not part of the version-one bundle above.
+
 The `index` Skill is a routing contract, not a duplicate implementation of every Skill.
 Linting must verify that its routes resolve to live current Skills, advertised tools exist,
 frontmatter and declared inputs/outputs are valid, and no built-in Skill is unreachable.
