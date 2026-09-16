@@ -17,7 +17,13 @@ workspace. Cortex implements an independently runnable FastAPI health service, N
 application, and the responsibility-focused `cortex-brain` HTTP client package. The Cortex application
 owns the client lifecycle and uses Brain's public health and authenticated identity-context routes
 through bounded requests. Its dependency diagnostic exposes safe status categories while local
-health remains dependency-free. The provider-neutral `cortex-ai` package defines immutable
+health remains dependency-free. Cortex also exposes authenticated read-only `POST /knowledge/lookup`:
+its bounded Brain client searches through public HTTP, reads the top authorized Page, checks
+the current version against the search hit, and returns Page evidence with visible provenance.
+Lookup state lives only for the request, outside canonical conversation turns. The local
+single-owner Cortex credential uses one configured Brain authorization identity; per-user
+Brain identity propagation is not implemented.
+The provider-neutral `cortex-ai` package defines immutable
 single-turn chat contracts, controlled model errors, an async non-streaming protocol, and a
 deterministic synthetic implementation plus a bounded, no-retry OpenAI Responses API adapter.
 Cortex exposes a stateless `POST /chat/turn` through an injected application service. The

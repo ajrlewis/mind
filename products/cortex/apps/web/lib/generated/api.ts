@@ -89,3 +89,18 @@ export const BrainDiagnosticResponse = z
     ]),
   })
   .passthrough();
+export const LookupRequest = z.object({ query: z.string().min(1).max(500) });
+export const LookupResult = z
+  .object({
+    content_markdown: z.string(),
+    page_id: z.string().uuid(),
+    page_version_id: z.string().uuid(),
+    path: z.string(),
+    snippet: z.string(),
+    source_titles: z.array(z.string()),
+    title: z.string(),
+  })
+  .passthrough();
+export const LookupResponse = z
+  .object({ result: z.union([LookupResult, z.null()]) })
+  .passthrough();

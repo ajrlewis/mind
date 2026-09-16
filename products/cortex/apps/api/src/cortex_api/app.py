@@ -37,6 +37,12 @@ from cortex_api.conversations import (
     ConversationTextDelta,
     StaleConversationError,
 )
+from cortex_api.knowledge import (
+    KnowledgeChanged,
+    KnowledgeLookupService,
+    LookupRequest,
+    LookupResponse,
+)
 from cortex_api.settings import Settings, get_settings
 from cortex_auth import AuthenticationError, CallerIdentity, LocalBearerAuthenticator
 from cortex_brain import (
@@ -146,6 +152,9 @@ def create_app(
     app.state.brain_client = resolved_client
     app.state.chat_service = resolved_chat_service
     app.state.conversation_service = resolved_conversation_service
+    lookup_service = (
+        KnowledgeLookupService(resolved_client) if resolved_client is not None else None
+    )
 
     def caller(authorization: Annotated[str | None, Header()] = None) -> CallerIdentity:
         try:
@@ -345,6 +354,26 @@ def create_app(
                 content={"dependency": "brain", "status": "error"},
             )
         return BrainDiagnosticResponse(status="ok")
+
+    @app.post("/knowledge/lookup", response_model=LookupResponse, tags=["knowledge"])
+    async def lookup_knowledge(
+        lookup: LookupRequest,
+        _: Annotated[CallerIdentity, Depends(caller)],
+    ) -> LookupResponse | JSONResponse:
+        if lookup_service is None:
+            return JSONResponse(status_code=503, content={"error": "brain_disabled"})
+        try:
+            return await lookup_service.lookup(lookup.query)
+        except KnowledgeChanged:
+            return JSONResponse(status_code=409, content={"error": "knowledge_changed"})
+        except BrainRejectedCredentials:
+            return JSONResponse(status_code=502, content={"error": "brain_unauthorized"})
+        except BrainMalformedResponse:
+            return JSONResponse(status_code=502, content={"error": "brain_malformed"})
+        except BrainUnavailable:
+            return JSONResponse(status_code=503, content={"error": "brain_unavailable"})
+        except BrainUnexpectedResponse:
+            return JSONResponse(status_code=502, content={"error": "brain_error"})
 
     return app
 

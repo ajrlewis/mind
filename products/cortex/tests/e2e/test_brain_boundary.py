@@ -29,3 +29,26 @@ def test_compose_cortex_reaches_brain_without_exposing_identity() -> None:
     assert diagnostic.json() == {"dependency": "brain", "status": "ok"}
     assert "organization_id" not in diagnostic.text
     assert "principal_id" not in diagnostic.text
+
+
+@pytest.mark.e2e
+def test_lookup_returns_current_authorized_northstar_evidence() -> None:
+    cortex_url = os.getenv("CORTEX_TEST_URL")
+    if cortex_url is None:
+        pytest.skip("Set CORTEX_TEST_URL to run against the Compose boundary")
+
+    response = httpx.post(
+        f"{cortex_url}/knowledge/lookup",
+        headers={
+            "Authorization": f"Bearer {os.getenv('CORTEX_TEST_BEARER_TOKEN', 'cortex-local-dev')}"
+        },
+        json={"query": "Revenue is £45m"},
+        timeout=20,
+    )
+
+    assert response.status_code == 200
+    result = response.json()["result"]
+    assert result is not None
+    assert result["title"] == "Project Orion"
+    assert "£45m" in result["content_markdown"]
+    assert "Project Orion operating update" in result["source_titles"]
