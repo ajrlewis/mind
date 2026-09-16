@@ -9,7 +9,12 @@ from cortex_brain.errors import (
     BrainUnavailable,
     BrainUnexpectedResponse,
 )
-from cortex_brain.models import BrainHealth, BrainIdentityContext
+from cortex_brain.models import (
+    BrainHealth,
+    BrainIdentityContext,
+    BrainPage,
+    BrainSearchResponse,
+)
 
 ResponseModel = TypeVar("ResponseModel", bound=BaseModel)
 
@@ -44,6 +49,14 @@ class BrainClient:
     async def identity_context(self) -> BrainIdentityContext:
         return await self._get("/auth/context", BrainIdentityContext, authenticated=True)
 
+    async def search(self, query: str) -> BrainSearchResponse:
+        return await self._request(
+            "POST", "/search", BrainSearchResponse, json={"query": query, "limit": 1}
+        )
+
+    async def get_page(self, page_id: str) -> BrainPage:
+        return await self._get(f"/pages/{page_id}", BrainPage, authenticated=True)
+
     async def aclose(self) -> None:
         if self._owns_http_client:
             await self._http_client.aclose()
@@ -52,8 +65,21 @@ class BrainClient:
         self, path: str, model: type[ResponseModel], *, authenticated: bool
     ) -> ResponseModel:
         headers = {"Authorization": self._authorization} if authenticated else None
+        return await self._request("GET", path, model, headers=headers)
+
+    async def _request(
+        self,
+        method: str,
+        path: str,
+        model: type[ResponseModel],
+        *,
+        headers: dict[str, str] | None = None,
+        json: dict[str, object] | None = None,
+    ) -> ResponseModel:
+        if method == "POST":
+            headers = {"Authorization": self._authorization}
         try:
-            response = await self._http_client.get(path, headers=headers)
+            response = await self._http_client.request(method, path, headers=headers, json=json)
         except httpx.TransportError as exc:
             raise BrainUnavailable("Brain is unavailable") from exc
 

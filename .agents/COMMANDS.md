@@ -56,6 +56,16 @@ CORTEX_TEST_URL=http://127.0.0.1:8100 \
   UV_CACHE_DIR="$PWD/.uv-cache" uv run pytest products/cortex/tests/e2e/test_conversations.py
 ```
 
+After Northstar is seeded, `test_brain_boundary.py` also checks the authenticated
+`POST /knowledge/lookup` search-then-current-Page flow. It uses the same Cortex-only bearer
+and the configured Brain service credential:
+
+```bash
+CORTEX_TEST_URL=http://127.0.0.1:8100 \
+  CORTEX_TEST_BEARER_TOKEN=cortex-local-dev \
+  UV_CACHE_DIR="$PWD/.uv-cache" uv run pytest products/cortex/tests/e2e/test_brain_boundary.py
+```
+
 Set both `BRAIN_URL` and `BRAIN_API_KEY` to enable `GET /health/brain`; the local `GET /health`
 remains independent. With the Compose stack running, the real Cortex-to-Brain HTTP boundary check
 is:
@@ -176,7 +186,8 @@ npm run test:e2e --workspace @cortex/web
 ```
 
 The Cortex Playwright flow expects the running Compose stack and exercises local sign-in,
-conversation creation, a deterministic atomic turn, navigation, and reopening persisted history.
+conversation creation, a deterministic atomic turn, navigation, Stop after the first delta, and
+reopening persisted history. CI runs it after the seeded Compose stack and Brain Playwright.
 
 `web:test` runs Vitest unit/component and mocked server-transport tests. The Playwright browser
 integration expects a running, migrated, Northstar-seeded Compose stack. Prepare it with:

@@ -35,11 +35,12 @@ jobs:
       - run: npm run cortex:web:test
       - run: npm run cortex:web:build
       - run: docker compose up -d --build
+      - run: docker compose exec -T brain-api brain-seed-northstar
       - run: CORTEX_TEST_URL=http://127.0.0.1:8100 uv run pytest products/cortex/tests/e2e/test_brain_boundary.py
       - run: CORTEX_TEST_URL=http://127.0.0.1:8100 uv run pytest products/cortex/tests/e2e/test_chat_turn.py products/cortex/tests/e2e/test_conversations.py
-      - run: docker compose exec -T brain-api brain-seed-northstar
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e --workspace @brain/web
+      - run: npm run test:e2e --workspace @cortex/web
       - if: always()
         run: docker compose down
 

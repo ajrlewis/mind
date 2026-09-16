@@ -112,8 +112,24 @@ test; exercise a real account only by explicitly configuring the OpenAI settings
 
 ## Implemented Brain boundary
 
-`cortex-brain` is a Cortex-owned, typed `httpx` client for Brain's public `GET /health` and
-`GET /auth/context` operations. It does not import Brain packages or access Brain persistence.
+The first bounded knowledge workflow is `POST /knowledge/lookup`. A local authenticated Cortex
+caller supplies a query (1–500 characters). Cortex asks Brain's public authorized `POST /search`
+for one hit, then reads that Page through public `GET /pages/{id}`. It returns the current Page's
+Markdown, search snippet, path, version ID, and visible provenance source titles. No hit returns
+`{"result":null}`; a version change between search and read returns `knowledge_changed` so the
+caller can retry. Brain credential, owner identity, raw upstream failures, and hidden model state
+are absent from the response. This is read-only evidence retrieval, not a generated answer.
+
+This initial workflow was selected over document ingestion and onboarding actions because it
+has a narrow read-only outcome and exercises Brain's existing authorization boundary. Its only
+run state is the query, search hit, and Page response in one request; nothing is checkpointed or
+added to public conversation history. The local Cortex bearer maps to one local owner and one
+configured Brain credential. Per-user Brain identity propagation must be designed before adding
+multiple Cortex users; the current credential must not be treated as their individual access.
+
+`cortex-brain` is a Cortex-owned, typed `httpx` client for Brain's public `GET /health`,
+`GET /auth/context`, `POST /search`, and `GET /pages/{id}` operations. It does not import Brain
+packages or access Brain persistence.
 The Cortex API constructs and closes the client at the application boundary and keeps its bearer
 credential server-side.
 

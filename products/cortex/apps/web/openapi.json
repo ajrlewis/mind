@@ -281,6 +281,85 @@
         "title": "HealthResponse",
         "type": "object"
       },
+      "LookupRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "query": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Query",
+            "type": "string"
+          }
+        },
+        "required": ["query"],
+        "title": "LookupRequest",
+        "type": "object"
+      },
+      "LookupResponse": {
+        "properties": {
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LookupResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": ["result"],
+        "title": "LookupResponse",
+        "type": "object"
+      },
+      "LookupResult": {
+        "properties": {
+          "content_markdown": {
+            "title": "Content Markdown",
+            "type": "string"
+          },
+          "page_id": {
+            "format": "uuid",
+            "title": "Page Id",
+            "type": "string"
+          },
+          "page_version_id": {
+            "format": "uuid",
+            "title": "Page Version Id",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "snippet": {
+            "title": "Snippet",
+            "type": "string"
+          },
+          "source_titles": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Source Titles",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "page_id",
+          "page_version_id",
+          "title",
+          "path",
+          "snippet",
+          "content_markdown",
+          "source_titles"
+        ],
+        "title": "LookupResult",
+        "type": "object"
+      },
       "TokenUsage": {
         "additionalProperties": false,
         "properties": {
@@ -718,6 +797,63 @@
         },
         "summary": "Brain Health",
         "tags": ["system"]
+      }
+    },
+    "/knowledge/lookup": {
+      "post": {
+        "operationId": "lookup_knowledge_knowledge_lookup_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LookupRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LookupResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Lookup Knowledge",
+        "tags": ["knowledge"]
       }
     }
   }
