@@ -648,6 +648,14 @@ Cortex owns the execution semantics.
 
 Brain owns the Skill definition.
 
+The planned canonical Skill families include PDF and PowerPoint extraction, SharePoint source
+retrieval and ingestion, and public web search/research. Brain should store their reviewed
+instructions; Cortex should provide the file, SharePoint, and web tools needed to execute them.
+A Skill may describe a workflow using those tools, but it does not grant access to them. Each
+addition needs a bounded input/output contract, authorization and provenance rules, and a
+working tool boundary before it is advertised as available. The current default bundle does
+not contain these Skills.
+
 ---
 
 # Skill execution
