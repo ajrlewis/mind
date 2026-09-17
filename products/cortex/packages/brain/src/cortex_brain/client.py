@@ -49,9 +49,9 @@ class BrainClient:
     async def identity_context(self) -> BrainIdentityContext:
         return await self._get("/auth/context", BrainIdentityContext, authenticated=True)
 
-    async def search(self, query: str) -> BrainSearchResponse:
+    async def search(self, query: str, *, limit: int = 1) -> BrainSearchResponse:
         return await self._request(
-            "POST", "/search", BrainSearchResponse, json={"query": query, "limit": 1}
+            "POST", "/search", BrainSearchResponse, json={"query": query, "limit": limit}
         )
 
     async def get_page(self, page_id: str) -> BrainPage:

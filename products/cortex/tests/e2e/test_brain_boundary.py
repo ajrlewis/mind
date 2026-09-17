@@ -65,13 +65,13 @@ def test_answer_references_verified_northstar_page_version() -> None:
     lookup = httpx.post(
         f"{cortex_url}/knowledge/lookup",
         headers=headers,
-        json={"query": "Revenue is £45m"},
+        json={"query": "Operating Partner"},
         timeout=20,
     )
     answer = httpx.post(
         f"{cortex_url}/knowledge/answer",
         headers=headers,
-        json={"query": "Revenue is £45m"},
+        json={"query": "Operating Partner"},
         timeout=20,
     )
     assert lookup.status_code == answer.status_code == 200
@@ -79,7 +79,12 @@ def test_answer_references_verified_northstar_page_version() -> None:
     result = answer.json()["result"]
     assert result["synthetic"] is True
     assert result["answer"].startswith("Synthetic response to:")
-    assert result["reference"] == {
+    assert len(result["references"]) >= 2
+    assert [reference["label"] for reference in result["references"]] == [
+        str(index) for index in range(1, len(result["references"]) + 1)
+    ]
+    assert result["references"][0] == {
+        "label": "1",
         "page_id": evidence["page_id"],
         "page_version_id": evidence["page_version_id"],
         "title": evidence["title"],
