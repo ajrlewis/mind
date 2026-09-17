@@ -16,7 +16,7 @@ unavailable, and malformed results have safe messages.
 
 The same page can ask for a transient answer. Its signed server action calls authenticated
 `POST /knowledge/answer`, validates the response, and displays an escaped answer beside a
-server-selected PageVersion reference and visible source titles. The deterministic local model
+ordered, server-selected PageVersion references and visible source titles. The deterministic local model
 is labeled synthetic. Answers disappear on reload and never enter conversation history.
 
 The Cortex Next.js application provides a minimal local authenticated conversation workspace. A
@@ -132,12 +132,14 @@ Markdown, search snippet, path, version ID, and visible provenance source titles
 caller can retry. Brain credential, owner identity, raw upstream failures, and hidden model state
 are absent from the response. This is read-only evidence retrieval, not a generated answer.
 
-`POST /knowledge/answer` reuses that search and current Page read for at most one hit. An empty
-search returns no answer without invoking the model; a changed Page fails before invocation.
-The service sends the question and a bounded excerpt of the verified Page to the existing
-provider-neutral model once, with instructions to treat Page text as untrusted context. It
-accepts only a bounded assistant response. Cortex builds the displayed reference from Brain's
-verified PageVersion and caller-visible provenance, never from model output. The response holds
+`POST /knowledge/answer` searches for at most three authorized hits and reads each current Page.
+An empty search returns no answer without invoking the model; a changed or unreadable Page fails
+the whole answer before invocation. Each Page has an ordered label and a 2,300-character context
+block; the three blocks total at most 6,904 characters including separators, within the existing
+8,000-character model-message limit. Titles, paths, snippets, Markdown, and provenance are
+untrusted context. The service sends the question and context to the existing provider-neutral
+model once and accepts only a bounded assistant response. Cortex builds displayed references from
+verified PageVersions and caller-visible provenance, never from model output. The response holds
 no owner or credential data, provider payloads, or hidden reasoning; it is not persisted.
 
 This initial workflow was selected over document ingestion and onboarding actions because it

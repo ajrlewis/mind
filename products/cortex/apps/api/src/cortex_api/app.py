@@ -158,8 +158,8 @@ def create_app(
         KnowledgeLookupService(resolved_client) if resolved_client is not None else None
     )
     answer_service = (
-        KnowledgeAnswerService(lookup_service, resolved_chat_service)
-        if lookup_service is not None
+        KnowledgeAnswerService(resolved_client, resolved_chat_service)
+        if resolved_client is not None
         else None
     )
 

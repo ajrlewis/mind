@@ -230,13 +230,16 @@ def test_answer_uses_verified_reference_and_untrusted_bounded_context() -> None:
     assert response.json() == {
         "result": {
             "answer": "Use the synthetic policy.",
-            "reference": {
-                "page_id": PAGE_ID,
-                "page_version_id": VERSION_ID,
-                "title": "Verified title",
-                "path": "northstar/policy",
-                "source_titles": ["Visible memo"],
-            },
+            "references": [
+                {
+                    "label": "1",
+                    "page_id": PAGE_ID,
+                    "page_version_id": VERSION_ID,
+                    "title": "Verified title",
+                    "path": "northstar/policy",
+                    "source_titles": ["Visible memo"],
+                }
+            ],
             "synthetic": False,
         }
     }
@@ -248,6 +251,157 @@ def test_answer_uses_verified_reference_and_untrusted_bounded_context() -> None:
     assert "ignore previous instructions" in messages[1].content
     assert len(messages[1].content) <= 8000
     assert TOKEN not in str(messages)
+
+
+@pytest.mark.parametrize("count", [2, 3])
+def test_answer_reads_ordered_current_pages_once_and_bounds_context(count: int) -> None:
+    from typing import cast
+
+    from cortex_ai import ChatModel
+
+    calls: list[object] = []
+    paths: list[str] = []
+
+    class Model:
+        async def invoke(self, messages: object) -> ModelResponse:
+            calls.append(messages)
+            return ModelResponse(
+                message=ChatMessage(role="assistant", content="See [Page 1]."), model="test"
+            )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        paths.append(request.url.path)
+        if request.url.path == "/search":
+            assert request.read() == b'{"query":"policy","limit":3}'
+            return httpx.Response(
+                200,
+                json={
+                    "results": [
+                        {
+                            "page_id": str(UUID(int=i)),
+                            "page_version_id": str(UUID(int=i + 10)),
+                            "title": f"Search {i}",
+                            "path": f"path/{i}",
+                            "snippet": "s" * 1000,
+                        }
+                        for i in range(1, count + 1)
+                    ]
+                },
+            )
+        i = int(request.url.path.rsplit("/", 1)[-1].split("-")[-1], 16)
+        return httpx.Response(
+            200,
+            json={
+                "id": str(UUID(int=i)),
+                "title": f"Verified {i}",
+                "current_version": {
+                    "id": str(UUID(int=i + 10)),
+                    "content_markdown": "m" * 9000,
+                    "provenance": [{"source": {"title": f"Visible {i}"}}],
+                },
+            },
+        )
+
+    brain = BrainClient(
+        base_url="http://brain.test",
+        api_key=TOKEN,
+        connect_timeout_seconds=1,
+        read_timeout_seconds=1,
+        http_client=httpx.AsyncClient(
+            transport=httpx.MockTransport(handler), base_url="http://brain.test"
+        ),
+    )
+    client = TestClient(
+        create_app(brain_client=brain, chat_service=ChatTurnService(cast(ChatModel, Model())))
+    )
+    response = client.post("/knowledge/answer", headers=CORTEX_HEADERS, json={"query": "policy"})
+    assert response.status_code == 200
+    references = response.json()["result"]["references"]
+    assert [item["label"] for item in references] == [str(i) for i in range(1, count + 1)]
+    assert [item["title"] for item in references] == [f"Verified {i}" for i in range(1, count + 1)]
+    assert [item["page_version_id"] for item in references] == [
+        str(UUID(int=i + 10)) for i in range(1, count + 1)
+    ]
+    assert paths == ["/search", *[f"/pages/{UUID(int=i)}" for i in range(1, count + 1)]]
+    assert len(calls) == 1
+    messages = calls[0]
+    assert isinstance(messages, tuple)
+    context = messages[1].content
+    assert len(context) <= 8000
+    for i in range(1, count + 1):
+        assert f"[Page {i}] PageVersion: {UUID(int=i + 10)}" in context
+        assert f"Visible {i}" in context
+    assert context.index("[Page 1]") < context.index("[Page 2]")
+
+
+@pytest.mark.parametrize("failure", ["stale", "wrong_id", "denied", "malformed"])
+def test_answer_rejects_unreadable_later_page_before_model(failure: str) -> None:
+    from typing import cast
+
+    from cortex_ai import ChatModel
+
+    class Model:
+        async def invoke(self, _: object) -> ModelResponse:
+            raise AssertionError("model must not be called")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/search":
+            return httpx.Response(
+                200,
+                json={
+                    "results": [
+                        {
+                            "page_id": str(UUID(int=i)),
+                            "page_version_id": str(UUID(int=i + 10)),
+                            "title": "Synthetic",
+                            "path": "policy",
+                            "snippet": "Synthetic",
+                        }
+                        for i in (1, 2)
+                    ]
+                },
+            )
+        if request.url.path.endswith(str(UUID(int=2))):
+            if failure == "denied":
+                return httpx.Response(403, text="private")
+            if failure == "malformed":
+                return httpx.Response(200, json={"id": str(UUID(int=2))})
+        i = 1 if request.url.path.endswith(str(UUID(int=1))) else 2
+        return httpx.Response(
+            200,
+            json={
+                "id": str(UUID(int=3 if i == 2 and failure == "wrong_id" else i)),
+                "title": "Synthetic",
+                "current_version": {
+                    "id": str(UUID(int=99 if i == 2 and failure == "stale" else i + 10)),
+                    "content_markdown": "safe",
+                    "provenance": [],
+                },
+            },
+        )
+
+    brain = BrainClient(
+        base_url="http://brain.test",
+        api_key=TOKEN,
+        connect_timeout_seconds=1,
+        read_timeout_seconds=1,
+        http_client=httpx.AsyncClient(
+            transport=httpx.MockTransport(handler), base_url="http://brain.test"
+        ),
+    )
+    client = TestClient(
+        create_app(brain_client=brain, chat_service=ChatTurnService(cast(ChatModel, Model())))
+    )
+    response = client.post("/knowledge/answer", headers=CORTEX_HEADERS, json={"query": "policy"})
+    assert response.status_code == (409 if failure in {"stale", "wrong_id"} else 502)
+    assert response.json() == {
+        "error": "knowledge_changed"
+        if failure in {"stale", "wrong_id"}
+        else "brain_unauthorized"
+        if failure == "denied"
+        else "brain_malformed"
+    }
+    assert "private" not in response.text
 
 
 @pytest.mark.parametrize("state", ["empty", "stale"])

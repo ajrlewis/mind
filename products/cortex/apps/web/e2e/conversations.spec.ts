@@ -57,12 +57,13 @@ test("Northstar lookup shows read-only evidence outside conversation history", a
   await expect(evidence.getByRole("heading", { name: "Project Orion" })).toBeVisible();
   await expect(evidence.getByText("Project Orion operating update")).toBeVisible();
   await expect(evidence).toContainText("£45m");
-  await page.getByLabel("Ask Cortex").fill("Revenue is £45m");
+  await page.getByLabel("Ask Cortex").fill("Operating Partner");
   await page.getByRole("button", { name: "Ask", exact: true }).click();
   const answer = page.getByRole("article", { name: "Knowledge answer" });
   await expect(answer).toContainText("Synthetic local model answer");
   await expect(answer).toContainText("Project Orion operating update");
   await expect(answer).toContainText("PageVersion:");
+  await expect(answer.getByRole("listitem").filter({ hasText: "PageVersion:" })).toHaveCount(3);
   await expect(page.getByLabel("Messages")).toHaveCount(0);
   const cookies = await page.context().cookies();
   expect(cookies.find((cookie) => cookie.name === "cortex-session")).toMatchObject({ httpOnly: true, sameSite: "Lax" });

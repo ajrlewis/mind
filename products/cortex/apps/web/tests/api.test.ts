@@ -31,9 +31,9 @@ describe("Cortex API transport", () => {
     vi.stubGlobal("fetch", fetcher);
     await expect(answerKnowledge("Northstar policy")).resolves.toEqual({ result: null });
     expect(fetcher).toHaveBeenCalledWith("http://api.test/knowledge/answer", expect.objectContaining({ method: "POST", body: JSON.stringify({ query: "Northstar policy" }), cache: "no-store", headers: { "Content-Type": "application/json", Authorization: "Bearer server-secret" } }));
-    fetcher.mockResolvedValue(new Response(JSON.stringify({ result: { answer: "Invented", reference: { page_version_id: "bad" }, synthetic: false } })));
+    fetcher.mockResolvedValue(new Response(JSON.stringify({ result: { answer: "Invented", references: [{ page_version_id: "bad" }], synthetic: false } })));
     await expect(answerKnowledge("Northstar policy")).rejects.toEqual(new ApiError("invalid_response"));
-    fetcher.mockResolvedValue(new Response(JSON.stringify({ result: { answer: "", reference: { page_id: summary.id, page_version_id: summary.id, title: "Policy", path: "policy", source_titles: [] }, synthetic: false } })));
+    fetcher.mockResolvedValue(new Response(JSON.stringify({ result: { answer: "", references: [{ label: "1", page_id: summary.id, page_version_id: summary.id, title: "Policy", path: "policy", source_titles: [] }], synthetic: false } })));
     await expect(answerKnowledge("Northstar policy")).rejects.toEqual(new ApiError("invalid_response"));
   });
   it.each([[409, "knowledge_changed", "knowledge_changed"], [503, "brain_disabled", "brain_disabled"], [503, "brain_unavailable", "unavailable"], [502, "brain_malformed", "invalid_response"]] as const)("maps lookup %s/%s safely", async (status, code, kind) => {

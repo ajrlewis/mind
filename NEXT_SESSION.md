@@ -1,5 +1,22 @@
 # Next Session
 
+## Status — 2026-09-17
+
+The multi-Page answer slice is implemented on `feature/multi-page-knowledge-answer`.
+`/knowledge/answer` searches for at most three authorized Pages, reads and validates every
+current PageVersion before one model call, and returns ordered server-selected references with
+caller-visible provenance. The model receives deterministic labeled blocks of at most 2,300
+characters each (6,904 including separators), with untrusted Page fields encoded as data.
+`/knowledge/lookup` remains a single-Page contract. The Knowledge view displays the reference
+list, preserves the synthetic label, and keeps the answer transient.
+
+Verification passed: Ruff, format, Pyright, 186 non-integration Python tests with 90.62%
+coverage, 10 Brain and 11 Cortex PostgreSQL tests, both web lint/typecheck/unit/build suites,
+contract generation and drift checks, Compose build and health, Northstar seed, three live
+Cortex-to-Brain checks, and both Playwright suites (one Brain, three Cortex tests). The seeded
+“Operating Partner” browser answer displayed three references. The Cortex client bundle scan
+found no local bearer strings. Compose was stopped with its data volume retained.
+
 ## Objective
 
 Make Cortex's evidence-backed answers useful when a question spans a small number of Brain
@@ -19,9 +36,13 @@ reload and never enter canonical conversation history. API, model-boundary, web,
 Northstar tests cover the flow. PR #30 passed `quality`, `docker`, and `web` CI, including both
 Playwright suites.
 
+PR #31 (`506e0a9`, merged as `c9f97a7`) added this handoff to the repository. It changed no
+runtime behavior and passed `quality`, `docker`, and `web` CI. The multi-Page answer flow below
+is implemented in the current branch; CI has not run for it yet.
+
 The local bearer still maps to one owner and one configured Brain authorization identity. It
 does not enforce separate Brain permissions for multiple Cortex users. Compose was stopped
-after verification with its data volume retained.
+after earlier verification with its data volume retained. It was restarted for this slice.
 
 Before changing code, read `AGENTS.md`, `.agents/WORKFLOW.md`, `.agents/ARCHITECTURE.md`,
 `.agents/COMMANDS.md`, and `products/cortex/README.md`. Start from up-to-date `main` on a focused

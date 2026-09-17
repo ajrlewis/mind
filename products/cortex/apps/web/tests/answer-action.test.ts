@@ -23,7 +23,7 @@ it("requires a session and valid question before backend access", async () => {
 });
 
 it("returns a transient answer or a safe empty result", async () => {
-  const result = { answer: "Synthetic", reference: { page_id: "id", page_version_id: "version", title: "Policy", path: "policy", source_titles: ["Memo"] }, synthetic: true };
+  const result = { answer: "Synthetic", references: [{ label: "1", page_id: "id", page_version_id: "version", title: "Policy", path: "policy", source_titles: ["Memo"] }], synthetic: true };
   answer.mockResolvedValueOnce({ result }).mockResolvedValueOnce({ result: null });
   expect(await submitAnswer({ result: null }, form(" policy "))).toEqual({ result });
   expect(answer).toHaveBeenCalledWith("policy");

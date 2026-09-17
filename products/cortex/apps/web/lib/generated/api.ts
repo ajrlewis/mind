@@ -92,6 +92,7 @@ export const BrainDiagnosticResponse = z
 export const LookupRequest = z.object({ query: z.string().min(1).max(500) });
 export const AnswerReference = z
   .object({
+    label: z.string(),
     page_id: z.string().uuid(),
     page_version_id: z.string().uuid(),
     path: z.string(),
@@ -102,7 +103,7 @@ export const AnswerReference = z
 export const AnswerResult = z
   .object({
     answer: z.string().min(1).max(32000),
-    reference: AnswerReference,
+    references: z.array(AnswerReference).min(1).max(3),
     synthetic: z.boolean(),
   })
   .passthrough();

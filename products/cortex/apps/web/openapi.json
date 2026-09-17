@@ -3,6 +3,10 @@
     "schemas": {
       "AnswerReference": {
         "properties": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
           "page_id": {
             "format": "uuid",
             "title": "Page Id",
@@ -30,6 +34,7 @@
           }
         },
         "required": [
+          "label",
           "page_id",
           "page_version_id",
           "title",
@@ -64,15 +69,21 @@
             "title": "Answer",
             "type": "string"
           },
-          "reference": {
-            "$ref": "#/components/schemas/AnswerReference"
+          "references": {
+            "items": {
+              "$ref": "#/components/schemas/AnswerReference"
+            },
+            "maxItems": 3,
+            "minItems": 1,
+            "title": "References",
+            "type": "array"
           },
           "synthetic": {
             "title": "Synthetic",
             "type": "boolean"
           }
         },
-        "required": ["answer", "reference", "synthetic"],
+        "required": ["answer", "references", "synthetic"],
         "title": "AnswerResult",
         "type": "object"
       },
