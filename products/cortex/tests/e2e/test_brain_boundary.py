@@ -52,3 +52,37 @@ def test_lookup_returns_current_authorized_northstar_evidence() -> None:
     assert result["title"] == "Project Orion"
     assert "£45m" in result["content_markdown"]
     assert "Project Orion operating update" in result["source_titles"]
+
+
+@pytest.mark.e2e
+def test_answer_references_verified_northstar_page_version() -> None:
+    cortex_url = os.getenv("CORTEX_TEST_URL")
+    if cortex_url is None:
+        pytest.skip("Set CORTEX_TEST_URL to run against the Compose boundary")
+    headers = {
+        "Authorization": f"Bearer {os.getenv('CORTEX_TEST_BEARER_TOKEN', 'cortex-local-dev')}"
+    }
+    lookup = httpx.post(
+        f"{cortex_url}/knowledge/lookup",
+        headers=headers,
+        json={"query": "Revenue is £45m"},
+        timeout=20,
+    )
+    answer = httpx.post(
+        f"{cortex_url}/knowledge/answer",
+        headers=headers,
+        json={"query": "Revenue is £45m"},
+        timeout=20,
+    )
+    assert lookup.status_code == answer.status_code == 200
+    evidence = lookup.json()["result"]
+    result = answer.json()["result"]
+    assert result["synthetic"] is True
+    assert result["answer"].startswith("Synthetic response to:")
+    assert result["reference"] == {
+        "page_id": evidence["page_id"],
+        "page_version_id": evidence["page_version_id"],
+        "title": evidence["title"],
+        "path": evidence["path"],
+        "source_titles": evidence["source_titles"],
+    }

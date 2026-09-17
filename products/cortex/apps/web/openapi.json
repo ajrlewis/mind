@@ -1,6 +1,81 @@
 {
   "components": {
     "schemas": {
+      "AnswerReference": {
+        "properties": {
+          "page_id": {
+            "format": "uuid",
+            "title": "Page Id",
+            "type": "string"
+          },
+          "page_version_id": {
+            "format": "uuid",
+            "title": "Page Version Id",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "source_titles": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Source Titles",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "page_id",
+          "page_version_id",
+          "title",
+          "path",
+          "source_titles"
+        ],
+        "title": "AnswerReference",
+        "type": "object"
+      },
+      "AnswerResponse": {
+        "properties": {
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AnswerResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": ["result"],
+        "title": "AnswerResponse",
+        "type": "object"
+      },
+      "AnswerResult": {
+        "properties": {
+          "answer": {
+            "maxLength": 32000,
+            "minLength": 1,
+            "title": "Answer",
+            "type": "string"
+          },
+          "reference": {
+            "$ref": "#/components/schemas/AnswerReference"
+          },
+          "synthetic": {
+            "title": "Synthetic",
+            "type": "boolean"
+          }
+        },
+        "required": ["answer", "reference", "synthetic"],
+        "title": "AnswerResult",
+        "type": "object"
+      },
       "AppendTurnRequest": {
         "additionalProperties": false,
         "properties": {
@@ -797,6 +872,63 @@
         },
         "summary": "Brain Health",
         "tags": ["system"]
+      }
+    },
+    "/knowledge/answer": {
+      "post": {
+        "operationId": "answer_knowledge_knowledge_answer_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LookupRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnswerResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Answer Knowledge",
+        "tags": ["knowledge"]
       }
     },
     "/knowledge/lookup": {

@@ -90,6 +90,25 @@ export const BrainDiagnosticResponse = z
   })
   .passthrough();
 export const LookupRequest = z.object({ query: z.string().min(1).max(500) });
+export const AnswerReference = z
+  .object({
+    page_id: z.string().uuid(),
+    page_version_id: z.string().uuid(),
+    path: z.string(),
+    source_titles: z.array(z.string()),
+    title: z.string(),
+  })
+  .passthrough();
+export const AnswerResult = z
+  .object({
+    answer: z.string().min(1).max(32000),
+    reference: AnswerReference,
+    synthetic: z.boolean(),
+  })
+  .passthrough();
+export const AnswerResponse = z
+  .object({ result: z.union([AnswerResult, z.null()]) })
+  .passthrough();
 export const LookupResult = z
   .object({
     content_markdown: z.string(),

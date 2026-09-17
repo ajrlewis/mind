@@ -38,6 +38,8 @@ from cortex_api.conversations import (
     StaleConversationError,
 )
 from cortex_api.knowledge import (
+    AnswerResponse,
+    KnowledgeAnswerService,
     KnowledgeChanged,
     KnowledgeLookupService,
     LookupRequest,
@@ -154,6 +156,11 @@ def create_app(
     app.state.conversation_service = resolved_conversation_service
     lookup_service = (
         KnowledgeLookupService(resolved_client) if resolved_client is not None else None
+    )
+    answer_service = (
+        KnowledgeAnswerService(lookup_service, resolved_chat_service)
+        if lookup_service is not None
+        else None
     )
 
     def caller(authorization: Annotated[str | None, Header()] = None) -> CallerIdentity:
@@ -374,6 +381,36 @@ def create_app(
             return JSONResponse(status_code=503, content={"error": "brain_unavailable"})
         except BrainUnexpectedResponse:
             return JSONResponse(status_code=502, content={"error": "brain_error"})
+
+    @app.post("/knowledge/answer", response_model=AnswerResponse, tags=["knowledge"])
+    async def answer_knowledge(
+        request: LookupRequest,
+        _: Annotated[CallerIdentity, Depends(caller)],
+    ) -> AnswerResponse | JSONResponse:
+        if answer_service is None:
+            return JSONResponse(status_code=503, content={"error": "brain_disabled"})
+        try:
+            return await answer_service.answer(request.query)
+        except KnowledgeChanged:
+            return JSONResponse(status_code=409, content={"error": "knowledge_changed"})
+        except BrainRejectedCredentials:
+            return JSONResponse(status_code=502, content={"error": "brain_unauthorized"})
+        except BrainMalformedResponse:
+            return JSONResponse(status_code=502, content={"error": "brain_malformed"})
+        except BrainUnavailable:
+            return JSONResponse(status_code=503, content={"error": "brain_unavailable"})
+        except BrainUnexpectedResponse:
+            return JSONResponse(status_code=502, content={"error": "brain_error"})
+        except ModelTimeout:
+            return JSONResponse(status_code=503, content={"error": "model_timeout"})
+        except ModelUnavailable:
+            return JSONResponse(status_code=503, content={"error": "model_unavailable"})
+        except InvalidModelOutput:
+            return JSONResponse(status_code=502, content={"error": "invalid_model_response"})
+        except ModelRejectedRequest:
+            return JSONResponse(status_code=502, content={"error": "model_rejected_request"})
+        except Exception:
+            return JSONResponse(status_code=502, content={"error": "model_error"})
 
     return app
 
