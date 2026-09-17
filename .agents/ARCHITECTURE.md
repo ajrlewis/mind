@@ -20,7 +20,11 @@ through bounded requests. Its dependency diagnostic exposes safe status categori
 health remains dependency-free. Cortex also exposes authenticated read-only `POST /knowledge/lookup`:
 its bounded Brain client searches through public HTTP, reads the top authorized Page, checks
 the current version against the search hit, and returns Page evidence with visible provenance.
-Lookup state lives only for the request, outside canonical conversation turns. The local
+Authenticated `POST /knowledge/answer` uses the same current Page lookup and invokes the
+provider-neutral model once with bounded, explicitly untrusted Page context. It returns a
+transient answer with a server-selected PageVersion reference and visible provenance; empty or
+changed lookup does not invoke the model. The Knowledge web view renders it as escaped text.
+Lookup and answer state remain outside canonical conversation turns. The local
 single-owner Cortex credential uses one configured Brain authorization identity; per-user
 Brain identity propagation is not implemented.
 The provider-neutral `cortex-ai` package defines immutable

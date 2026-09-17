@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/env", () => ({ env: () => ({ CORTEX_API_URL: "http://api.test", CORTEX_API_BEARER_TOKEN: "server-secret" }) }));
-import { ApiError, appendTurn, createConversation, getConversation, listConversations, lookupKnowledge } from "@/lib/api";
+import { ApiError, answerKnowledge, appendTurn, createConversation, getConversation, listConversations, lookupKnowledge } from "@/lib/api";
 
 const summary = { id: "10000000-0000-4000-8000-000000000001", title: null, created_at: "2026-09-15T10:00:00Z", updated_at: "2026-09-15T10:00:00Z" };
 const conversation = { ...summary, messages: [] };
@@ -25,6 +25,16 @@ describe("Cortex API transport", () => {
     expect(fetcher).toHaveBeenCalledWith("http://api.test/knowledge/lookup", expect.objectContaining({ method: "POST", body: JSON.stringify({ query: "Northstar expenses" }), cache: "no-store", headers: { "Content-Type": "application/json", Authorization: "Bearer server-secret" } }));
     fetcher.mockResolvedValue(new Response(JSON.stringify({ result: { title: "unsafe", content_markdown: "<script>x</script>" } })));
     await expect(lookupKnowledge("Northstar")).rejects.toEqual(new ApiError("invalid_response"));
+  });
+  it("validates answers and their server-selected PageVersion references", async () => {
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ result: null })));
+    vi.stubGlobal("fetch", fetcher);
+    await expect(answerKnowledge("Northstar policy")).resolves.toEqual({ result: null });
+    expect(fetcher).toHaveBeenCalledWith("http://api.test/knowledge/answer", expect.objectContaining({ method: "POST", body: JSON.stringify({ query: "Northstar policy" }), cache: "no-store", headers: { "Content-Type": "application/json", Authorization: "Bearer server-secret" } }));
+    fetcher.mockResolvedValue(new Response(JSON.stringify({ result: { answer: "Invented", reference: { page_version_id: "bad" }, synthetic: false } })));
+    await expect(answerKnowledge("Northstar policy")).rejects.toEqual(new ApiError("invalid_response"));
+    fetcher.mockResolvedValue(new Response(JSON.stringify({ result: { answer: "", reference: { page_id: summary.id, page_version_id: summary.id, title: "Policy", path: "policy", source_titles: [] }, synthetic: false } })));
+    await expect(answerKnowledge("Northstar policy")).rejects.toEqual(new ApiError("invalid_response"));
   });
   it.each([[409, "knowledge_changed", "knowledge_changed"], [503, "brain_disabled", "brain_disabled"], [503, "brain_unavailable", "unavailable"], [502, "brain_malformed", "invalid_response"]] as const)("maps lookup %s/%s safely", async (status, code, kind) => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: code, detail: "private" }), { status })));

@@ -2,6 +2,7 @@ import "server-only";
 import { z } from "zod";
 import {
   AppendTurnResponse,
+  AnswerResponse,
   ConversationListResponse,
   ConversationResponse,
   LookupResponse,
@@ -87,6 +88,7 @@ async function request<T>(
 export type Conversation = z.infer<typeof ConversationResponse>;
 export type ConversationSummary = z.infer<typeof ConversationListResponse>["conversations"][number];
 export type LookupEvidence = NonNullable<z.infer<typeof LookupResponse>["result"]>;
+export type KnowledgeAnswer = NonNullable<z.infer<typeof AnswerResponse>["result"]>;
 
 export const createConversation = () =>
   request("/conversations", ConversationResponse, { method: "POST" });
@@ -105,6 +107,12 @@ export const appendTurn = (id: string, content: string) =>
   });
 export const lookupKnowledge = (query: string) =>
   request("/knowledge/lookup", LookupResponse, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ query }),
+  });
+export const answerKnowledge = (query: string) =>
+  request("/knowledge/answer", AnswerResponse, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ query }),
